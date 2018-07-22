@@ -2,15 +2,19 @@
 title: 'Data science course project report: Predicting seasonal influenza dynamics using syndromic surveliance'
 author: 'Anton Talantsev'
 output:
-  pdf_document: 
+  html_document: 
     fig_caption: yes
-    keep_tex: yes
-    number_sections: yes
+    keep_md: yes
     toc: yes
   word_document:
     toc: yes
   html_notebook:
     fig_caption: yes
+    number_sections: yes
+    toc: yes
+  pdf_document: 
+    fig_caption: yes
+    keep_tex: yes
     number_sections: yes
     toc: yes
 citation_package: natbib
