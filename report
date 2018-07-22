@@ -1,0 +1,601 @@
+---
+title: 'Data science course project report: Predicting seasonal influenza dynamics using syndromic surveliance'
+author: 'Anton Talantsev'
+output:
+  pdf_document: 
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+  word_document:
+    toc: yes
+  html_notebook:
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+citation_package: natbib
+bibliography: bibliography.bib
+---
+# Introduction
+
+Influenza is a well known and common human respiratory infection. It is responsible for significant morbidity and mortality every year. The World Health Organization (WHO) estimates that annual epidemics result in about 3 to 5 million cases of severe illness and about 250,000 to 500,000 casualties worldwide [1]. Influenza has a seasonal pattern, and in the Northern hemisphere, epidemics occur between November and March. 
+
+Public health specialists seek more effective and equitable response systems, but methodological problems frequently limit the usefulness of novel approaches [@Closas:2012jn].
+An extensive body of the literature exists on mathematical and computational models for studying the temporal dynamics of influenza outbreaks. The main purpose of some of these models is to inform public policy regarding the selection and allocation of public health interventions and resources during a pandemic.1 Reliable forecasts of measures such as peak time, peak height, and magnitude during an outbreak would inform public health practitioners and healthcare workers on when to expect a surge in demand for healthcare resources and infrastructure and the overall expected public health impact of an outbreak. Although timely forecasts of these measures would be beneficial, making reliable predictions during an outbreak remains a public health challenge.
+
+
+<!-- #### Used data sources and methods for predicting influenza -->
+
+In the field of syndromic surveillance, various sources are exploited for influenza activity detection, monitoring and prediction. The assumption is that by systematically collecting and analysing data such as air temperature and humidity [@Tamerius:2013bm, Monamele:2017du], social network posts [@Alessa:2018db], web-querries to national health information systems [@Hulth:2009go], and Google searches  (Google Flu) [@Dugas:2013dc].  Earlier detection will, in turn, allow for interventions that are assumed to lower the morbidity and mortality resulting from the outbreak [@Hulth:2009go]. 
+
+According to [@Nsoesie:2014hu], the autoregressive integrated moving average (ARIMA)  has been a dominant approach for modelling influenza outbreaks dynamics. "ARIMA models capture lagged relationships that usually exist in periodically collected data. In addition, temporal dependence can also be adequately represented in models that are capable of capturing trend and periodic changes." [@Nsoesie:2014hu, p 310]. The biggest assumption of ARIMA models is that the future values can be predicted based on the past observations. This imposes a limitation, as influenza dynamics is not consistent from season to season.
+Example studies employing ARIMA approach for modelling influenza activity include: [@JessicaSell:2014gi, Soebiyanto:2010be, Kane:2014dc, Monamele:2017du].
+
+<!-- ### Regression models -->
+
+<!-- ### About this project -->
+
+
+This report describes a study on calls to a Swedish nation-wide medical information service, with influenza as a case study. The hypothesis of the work is that influenza associated syndromes captured from calls would provide a basis for the estimation of the timing of the peak and the intensity of the yearly influenza outbreaks that would be as good as the existing laboratory surveillance.
+
+
+<!-- # Background -->
+
+<!-- ## Stationarity -->
+
+<!-- ### Unit Root Tests -->
+<!-- The stationarity /non-stationarity of the data can be known by applying Unit Root Tests – augmented Dickey-Fuller test (ADF), Kwiatkowski-Phillips-Schmidt-Shin (KPSS) test. -->
+
+<!-- #### Augmented Dickey-Fuller (ADF) tests  -->
+
+<!-- An augmented Dickey-Fuller test (ADF) tests the null hypothesis that a unit root is present in a time series sample, i.e., the data are non-stationary. ADF procedure tests whether the change in Y can be explained by lagged value and a linear trend. If a contribution of the lagged value to the change in Y is non-significant and there is a presence of a trend component, the series is non-stationary and null hypothesis will not be rejected. -->
+
+<!-- So large p-values are indicative of non-stationarity, and small p-values suggest stationarity. Using the usual 5% threshold, differencing is required if the p-value is greater than 0.05. -->
+
+
+<!-- ## ARIMA -->
+
+<!-- ### Step 5: Autocorrelations and Choosing Model Order -->
+<!-- ACF plots display a correlation between a series and its lags. In addition to suggesting the order of differencing, ACF plots can help in determining the order of the MA (q) model.  -->
+
+<!-- Partial autocorrelation plots (PACF), as the name suggests, display a correlation between a variable and its lags that is not explained by previous lags. PACF plots are useful when determining the order of the AR(p) model. -->
+
+# Datasets
+
+There are three datasets considered:
+
+1. The number of laboratory-diagnosed cases of type A and type B influenza ("LDI"). Time period: 2008-2017, periodicity: daily. 
+2. The total number of laboratory tests, where influenza is suspected ("denominator"). Time period: 2010-2017, periodicity: weekly.
+3. Records for calls to 1177 Vårdguiden ("1177"). Time period: 2010-2017. periodicity: daily.
+
+
+The “1177” dataset contains calls as observations and the following dimensions: "date","area","syndrome","action","age group","gender". For purposes of this project, only the "date" and the "syndrome" dimensions are further used. The "date" contains a calendar date for when the calls are placed. The "syndrome" contains one out of 77 “core” syndromes associated with the call (one for each call). The syndromes are assigned by the nurses taking the calls. It is worth noting that while a person might describe several syndromes - only one is assigned to the call under this dimension. Examples of syndromes include: "Fever - child", "Allergic symptoms", "Cough - adult", etc.
+<!-- Presumably, the recorded syndrome should be of the higher severity among  -->
+
+```{r Load required packages, include=FALSE}
+# setup
+source("packages.R")
+
+ # read 1177 sydromes dataset, include=FALSE}
+syndrom_xts <- readr::read_rds("~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/calls 1177/syndrom_work_share.rds")
+syndrom_xts_counts <- readr::read_rds("~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/calls 1177/syndrom_work_counts.rds")
+
+syndrom_weekly <- readr::read_rds("~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/calls 1177/syndrom_WEEKLY_CLEAN_share.rds")
+
+denominator_xts <- read_rds("~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/CLEAN DATA/denominator_complete.rds")
+
+{LDI_complete <- read_rds("~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/CLEAN DATA/LDI SHARE.rds")
+LDI_complete <- cbind(denominator_xts$season,LDI_complete)}
+LDI <- LDI_complete$share
+
+
+
+## exclude irrelevant syndromes
+
+exclude_names <- c("Allergic symptoms","Administrative action","NA_syndrome","Munha_lebesväru","Burn","Drugs question","Itching","General medical information","Depression", "Swallowing disorders","Anxiety + anxiety")
+syndrom_xts <- syndrom_xts[, !(colnames(syndrom_xts) %in% exclude_names)]
+syndrom_xts_counts <- syndrom_xts_counts[, !(colnames(syndrom_xts_counts) %in% exclude_names)]
+```
+
+## Exploring the datasets
+
+### "1177" dataset manipulation
+The daily number of calls associated with each syndrome was counted. Furthermore, a total number of calls for each date was calculated in order to define a relative frequency of each syndrome daily. Therefore, the data was normalised as the percentage of calls being associated with each syndrome. 
+The normalisation is mostly done in order to detrend the time series, as there is a trend of the overall growing use of the 1177 system over time.
+
+Notably, a daily number of calls includes calls with no associated syndromes (NA for "syndrome") and with syndromes, which are later excluded from the analysis. Therefore, the relative frequencies of syndromes don't necessarily sum up to 1 in the reduced dataset used for final modelling.
+
+The "syndrome" values were translated from Swedish to English using the Google translate service.
+
+<!-- Also, I calculated a total number of calls for each date in the 1177 dataset in order to later define a relative frequency of each syndrome daily. Notably, I calculated a total number of calls from the raw data, which includes syndromes, which are later dropped from the analysis. Therefore, the relative frequencies of syndromes don't necessarily sum up to 1 in a reduced dataset without dropped variables. We used the overall number of calls in order to avoid the impact of the overall growing use of the 1177 system over time (i.e., detrend time-series). -->
+
+### Irrelevant syndromes
+
+Upon further exploration, some of the syndromes were deemed to be clearly irrelevant for the influenza activity modelling, and, therefore were excluded from further consideration. These syndromes include: "Allergic symptoms","Administrative action","NA_syndrome","Munha_lebesväru","Burn","Drugs question","Itching","General medical information","Depression", "Swallowing disorders","Anxiety".
+
+
+### Missingness
+The 1177 dataset contains almost 41% of missing values for syndromes. 
+```{r include=FALSE}
+library("DataExplorer")
+syndrom_xts_counts %>% xts_tbl %>% plot_missing()
+```
+
+
+
+```{r missingness in the data, echo=FALSE, fig.cap="missingness", fig.height=150, fig.width=20}
+# out.height='40%', out.width='40%'
+# all graphs on 1 sheet:
+
+# par(mfrow=c(ncol(syndrom_xts[,1:a]), 5))
+options(max.print=200)
+{a <- ncol(syndrom_xts)
+par(mfrow=c(a, 6))
+invisible(lapply(ts(syndrom_xts[,1:a]), function (x) plotNA.distribution(x,main = colnames(x))))} #, )
+
+# plotNA.distribution(ts(syndrom_xts$`Seizures`))
+# plotNA.distribution(ts(syndrom_xts$`Rapture - children from 6 months`))
+# plotNA.gapsize(ts(syndrom_xts$`Regarding influenza H1N1`))
+# plotNA.gapsize(ts(syndrom_xts$`Seizures`), main="Missingness Seizures")
+
+```
+
+The figure X plots all the syndromes plotted as time-series, where the red lines indicate the missing values. As can be seen from the figure - many missing values are not equally distributed in different time-series.
+
+Some syndromes time-series have apparent "gaps" in time (see the figure X below)
+
+### Observations upon data structure
+Many syndrome time-series have a lot of missing values. A most likely explanation for this is the fact that the 1177 dataset is a merge of 1177.se and Vårdguiden data, which happened sometime in 2013/2014. There are several issues caused by that.
+
+1. Several syndromes are seemingly the same or directly related yet split into 2 or more time series, (e.g., "Diarrhea - children", "Diarrhea - children over 6 months", "Diarrhea - infants (0-12 months)","Diarrhea - infants 0 - 6 months").
+2. Presumably, datapoints for some syndromes were summed up, which might result in messing the time-series. E.g., "Dizziness" and "Skin lesion" have evident uplifts in the number of calls around Jan 2014. Albeit this issue is easily remedied by normalising the data by the total number of calls.
+
+```{r plot uplifts, echo=FALSE}
+plot(syndrom_xts_counts[,c("Dizziness","Skin lesion")], subset="2013/2014", legend.loc="topleft", main="Uplifts in the time-series, counts")
+```
+
+3. Alternatively, some syndromes were broken down into more subsyndromes, e.g. "Diarrhea - children" and "Diarrhea - children over 6 months".
+
+```{r plot complemented syndromes, echo=FALSE}
+plot(syndrom_xts_counts[,c("Diarrhea - children over 6 months","Diarrhea - children")], legend.loc="topright", main="Broken down syndromes")
+```
+
+4. Many syndromes related time-series contain long gaps in data, i.e., missing values (see, for example, four syndromes plotted on one chart). 
+
+```{r fig.cap='Seizures","Skin lesion", "Rapture - children from 6 months","Regarding influenza H1N1', fig.showtext='hello', echo=FALSE}
+# gaps <- names(syndrom_xts$Seizures, syndrom_xts$Shakes, syndrom_xts$`Rapture - children from 6 months`)
+# plot(syndrom_xts[,c("Skin lesion", "Rapture - children from 6 months")])
+# 
+# plot(syndrom_xts[,"Seizures"])
+
+plot(syndrom_xts[,c("Seizures","Skin lesion", "Rapture - children","Regarding influenza H1N1")], main="Gaps in the time-series data", legend.loc="topleft")
+
+
+# ,col=c("red", "blue"), lty=1:2, cex=0.8
+```
+
+These interruptions in the dataset explain high missingness in the syndromes variables. Notably, the dataset has mostly uninterrupted time-series for the syndromes with high missingness from around the year 2014 and onwards.
+Assuming that more data is beneficial for prediction task - we aim to preserve as much data as possible.
+Therefore, there is a choice between either taking more syndromes (variables) but limit the timeframe to years 2014-2017, or drop the variables with high missingness but retain the 2010- 2017 time frame with a lesser number of variables.
+
+We decided to exclude the variables with high missingness and consider only a reduced number of variables for further analysis. First, it seems that, to my limited knowledge on influenza, the potentially most relevant syndromes, such as fever, are intact by the aforementioned issues. Furthermore, as we assume more data on the historical behaviour of a highly seasonal phenomenon of influenza is more important than a large number of external variables. Besides, it is usually more valuable to have a model with a low number of variables than with high, i.e., the simpler the model - the better.
+
+Therefore, we selected variables with missingness of less than 1%.
+```{r Filtering syndromes with NA<1%, include=FALSE}
+na_percentage_syndromes <- syndrom_xts  %>% na_percentage()
+syndromes_names_w_lowNAs <- rownames(subset(na_percentage_syndromes,na_percentage_syndromes<=1))
+# length(syndromes_names_w_lowNAs)
+syndrome_subset <- syndrom_xts %>% as.data.frame() %>% select(syndromes_names_w_lowNAs)
+syndrome_subset_xts <- xts(syndrome_subset, order.by = date(rownames(syndrome_subset)))
+```
+The remaining missing values were interpolated with maximum gap of two consequative missing data points.
+```{r exptrapolating missing values, include=FALSE}
+syndrome_subset_xts_interpol <- na.approx(syndrome_subset_xts, na.rm=F, maxgap=2) # this interpolates NA values, with maxgap = 0, approx does nothing - just 
+# sum(na_percentage(syndrome_subset_xts_interpol))
+```
+Finally, the data was aggregated weekly.
+
+```{r aggregating 1177 weekly, include=FALSE}
+syndrom_weekly <- apply.weekly(syndrome_subset_xts_interpol,colSums)
+
+readr::write_rds(syndrom_weekly,"~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/calls 1177/syndrom_WEEKLY_CLEAN_share.rds", compress= "gz")
+```
+
+```{r # read 1177 WEEKLY sydromes dataset, include=FALSE}
+syndrom_weekly <- readr::read_rds("~/Library/Mobile Documents/com~apple~CloudDocs/Influenza DATA/calls 1177/syndrom_WEEKLY_CLEAN_share.rds")
+```
+
+
+
+## "Denominator" data
+
+The denominator dataset merely contains a total weekly number of laboratory tests where influenza was suspected. Note an evident ascending trend in the number of tests  (figure X). This warrants the need to normalise the number of positive tests with the total number of tests in order to scale and, thus, de-trend the LDI data. 
+
+```{r plot number of tests, echo=FALSE}
+denominator_xts$total_test_counts %>% plot(main=" Number of laboratory tests")
+```
+
+
+Since the total number of tests might be different over time, it is important to scale the number of positive influenza cases to the total number of tests. This is a form of detrending the time-series. 
+
+The data on a "total number of tests weekly" is available for the 2009-2018 period. However, since there was an influenza pandemic in 2009, it was decided to exclude from the further analysis - the 2009 year is considered as an outlier in the context of seasonal influenza.
+
+Furthermore, the 2017/2018 season is incomplete, therefore the 2017/2018 season is skipped as well.
+
+
+
+
+## Preparing and aggregating the LDI dataset
+
+The LDI dataset contains a daily number of laboratory-diagnosed influenza cases for influenza type A and type B in Sweden. The daily data is available for the 2008-2017 time period.
+
+<!-- ```{r plot influenza types A and B, echo=FALSE, warning=FALSE} -->
+
+<!-- LDI -->
+<!-- type_A_B_plot <- join %>% select(test_date, count_A=count_positive.x, count_B=count_positive.y) -->
+<!-- plot(xts(type_A_B_plot[,2:3], order.by =type_A_B_plot$test_date), main="LDI dataset: influenza type A and type B", legend.loc="topright") -->
+
+<!-- ``` -->
+
+It was decided not to differentiate between different types of influenza, and therefore, to sum up the counts for different influenza types and consider only the total number of influenza cases.
+
+It's worth noting that the data for laboratory-diagnosed influenza is recorded only for so-called "influenza seasons". This means that the data during off-seasons are missing. The season is conventionally defined as a period of week 40 (current year) to week 20 (following year).
+
+Since the LDI dataset needs to be normalised with the total number of tests, the LDI data needs to match the timeframe of the "denominator" and be aggregated weekly instead of daily.
+
+
+The final LDI dataset depicting the weekly percentage of positive influenza tests is plotted at figure X.
+
+```{r plot share of LDI, echo=FALSE}
+plot(LDI, main="Number of laboratory-diagnosed influenza cases, %")
+```
+
+
+<!-- # Problem definition -->
+
+<!-- The aim of this project is to model seasonal influenza activity and enable forecasting of future behaviour based upon syndromic surveillance and/or the influenza historical behaviour. -->
+
+## Evaluation setting
+
+The datasets were subset into "training" period covering influenza seasons from 2010-2016 (six influenza seasons) and "testing" period covering the 2016/2017 season (one influenza season). 
+
+```{r subsetting into TRAINing and TESTing data, include=FALSE}
+trainLDI <- LDI_complete[which(LDI_complete$season %in% c(11:16)),"share"] # length = 199
+testLDI <- LDI_complete[which(LDI_complete$season==17),"share"] # length = 33
+
+# LDI_complete %>% xts_tbl %>% filter(season %in% c(11:16))      
+
+trainSyndrome <- syndrom_weekly[index(trainLDI),-max(ncol(syndrom_weekly))]
+testSyndrome <- syndrom_weekly[index(testLDI),-max(ncol(syndrom_weekly))]
+
+```
+
+
+
+<!-- # Modelling with ARIMA aproach -->
+<!-- great source: https://www.otexts.org/fpp/8 -->
+<!-- I need SARIMA http://people.duke.edu/~rnau/seasarim.htm -->
+
+<!-- ## Stationarity -->
+
+<!-- Fitting an ARIMA model requires the series to be stationary. A stationary time series has "stable" mean, variance, and autocovariance , i.e., these properties do not depend on the time at which the series is observed.  -->
+
+
+<!-- "This assumption makes intuitive sense: Since ARIMA uses previous lags of series to model its behaviour, modelling stable series with consistent properties involves less uncertainty.  -->
+
+<!-- Time series with trends and/or with seasonality ar not stationary. -->
+
+<!-- We used augmented Dickey-Fuller (ADF) tests and Kwiatkowski-Phillips-Schmidt-Shin (KPSS) unit root tests to determine if each of the data source time series variables were stationary or would require differencing.  -->
+<!-- ```{r ADF test, echo=FALSE, warning=FALSE} -->
+<!-- tseries::adf.test(as.zoo(trainLDI)) -->
+
+
+<!-- ```{r KPSS test, echo=FALSE, warning=FALSE} -->
+<!-- tseries::kpss.test(as.zoo(trainLDI)) -->
+
+
+
+
+<!-- ### Testing seasonality -->
+<!-- Each of the sources was also tested using seasonal root tests to determine the appropriate number of seasonal differences required. -->
+
+
+
+<!-- #### Autocorrelation function (ACF) -->
+<!-- ACF plots display the correlation between a series and its lags. In addition to suggesting the order of differencing, ACF plots can help in determining the order of the M A (q) model.  -->
+
+
+<!-- ```{r Autocorrelation ACF PLOT, echo=FALSE} -->
+
+<!-- # par(mfrow=c(2,1)) -->
+<!-- # Acf(LDI, main='') -->
+<!-- Acf(trainLDI, main='', lag.max=60) -->
+
+
+
+<!-- #### Partial autocorrelation (PACF) -->
+
+<!-- ```{r  Partial autocorrelation plots (PACF) , echo=FALSE} -->
+<!-- # Pacf(LDI, main='') -->
+<!-- Pacf(trainLDI, main='', lag.max=60) -->
+
+
+<!-- Given that the ACF tails off and PACF cuts off at lag 2, the S(AR) order should be increased.  -->
+
+# Fitting regression models
+## Fitting an ARIMA model
+To fit an ARIMA model we executed the auto.arima function in the "forecast" package, which finds best ARIMA model according to either AIC, AICc or BIC value. The function conducts a search over possible model within the order constraints provided. 
+```{r fitting the auto ARIMA model, message=FALSE, warning=FALSE, include=FALSE}
+library("astsa")
+
+auto_ARIMA <- auto.arima(trainLDI) 
+auto_ARIMA %>% summary # gives ARIMA(4,0,1)
+# q %>% ts(frequency = 33) %>% diff %>% diff(differences = 1,lag=33) %>% plot
+```
+
+The prediction for selected ARIMA(4,0,1) model is depicted below (figure X).
+
+```{r plot auto ARIMA model, echo=FALSE, fig.cap="Forecast from ARIMA model"}
+fcast_auto_ARIMA_tr <- forecast::forecast(auto_ARIMA, h=length(testLDI))
+
+auto_ARIMA_accuracy_results_TRAIN <- accuracy(fcast_auto_ARIMA_tr)
+auto_ARIMA_accuracy_results_TEST <- accuracy(fcast_auto_ARIMA_tr,testLDI)
+
+plot(fcast_auto_ARIMA_tr)
+```
+
+
+```{r Manually fitted SARIMA model, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# SARIMA_manual <- sarima(LDI, p=1,d=0,q=1, P=2, D=1, Q=0, S=33, details=T) # best model so far - not great perforamnce
+
+sarima_pred <- sarima.for(LDI, p=1,d=0,q=1, P=2, D=1, Q=0, S=33, n.ahead = 33, plot.all = T)
+# SARIMA_manual$fit %>% summary()
+sarima_accuracy_results <-  accuracy(sarima_pred$pred, testLDI)
+# this SARIMA model performs worse than autoArima.
+cbind(sarima_pred$pred, testLDI) %>% matplot(type="b", col = c("red","black"))
+
+
+```
+
+
+
+## Modelling with partial least squares regression
+
+We fit a partial least squares regression model to the train datasets (syndromes are independent variables, and share of positive tests is a predicted variable). We use "plsr" function from the "pls" package. The default 10-fold cross-validation was used.
+```{r Fitting a model 10-fold CV, echo=TRUE, message=FALSE, warning=FALSE}
+library("pls")
+
+{y <- trainLDI %>% coredata()
+X <- trainSyndrome %>% coredata()
+# do PLS regression with 2-fold cross validation:
+pls_model_10CV <- plsr(y ~ X, 
+            validation = "CV",
+            # segment.type="consecutive",
+            # segments=6,
+            #,segments = cvsegments(66, length.seg = 33, type = "cons")
+            # method = "kernelpls"
+            method = "simpls"
+            )}
+# summary(pls_model_10CV)
+
+```
+
+The below chart shows the mean squared error of prediction based upon a number of components. Seemingly, a five seems to be the "best" number of components.
+
+```{r plot MSEP 10f CV, echo=FALSE}
+
+plot(MSEP(pls_model_10CV), legendpos = "topright")
+```
+
+The below chart shows the root mean squared error of prediction based upon a number of components. Similar to MSEP, a five seems to be the "best" number of components.
+
+```{r plot RMSEP 10f CV, echo=FALSE}
+
+plot(RMSEP(pls_model_10CV), legendpos = "topright")
+```
+
+
+As the MSEP and RMSEP charts shows, the inclusion of additional components tend to decrease errors, however, there is a clear diminishing reduction of errors. Moreover, simpler models, read less number of components, tend to be more flexible and give better forecasts.
+
+There are two consistent strategies for choosing the "optimal" number of components. The first is based on the so-called one-sigma heuristic [8] and consists of choosing the model with fewest components that is still less than one standard error away from the overall best model. The second strategy employs a permutation approach and basically tests whether adding a new component is beneficial at all [21](Van der Voet, 1994). As long as no significant deterioration in performance is found (in my case on the alpha = 0.01 level), the algorithm continues to remove components; the smallest model not significantly worse than the reference model is returned as the selected one.
+
+```{r Defining the optimal number of components 1, echo=FALSE, message=FALSE, warning=FALSE}
+ncomp.onesigma <- selectNcomp(pls_model_10CV, method = "onesigma", plot = TRUE, main="Optimal number of components according to the one-sigma heuristic")
+```
+
+```{r Defining optimal number of components 2, echo=FALSE}
+ncomp.permut <- selectNcomp(pls_model_10CV, method = "randomization", alpha = 0.01, plot = TRUE, main="Optimal number of components according to randomisation method")
+# selectNcomp(pls_model, plot = TRUE, main="Optimal number of components")
+```
+
+Both algorithms agree on the five as the number of components. Therefore we proceed with this number for further testing of this model.
+
+
+### Predicting influenza activity with PLSR
+
+First, lets see how the model fits the training dataset (figure X).
+
+```{r predict known seasons 10f CV, echo=FALSE}
+
+{pred_results_TRAIN_10CV <- predict(pls_model_10CV
+                               , ncomp = 5
+                               # , comps = 1
+                               )
+
+merge_to_plot <- merge.xts(trainLDI, pred_results_TRAIN_10CV)
+names(merge_to_plot) <- c("actual", "predicted")
+plot(merge_to_plot, xlab="Time", ylab="% of positive tests", main="Predicting 'known' seasons 1 to 6", legend.loc="topright")
+}
+
+```
+
+```{r predict unknown season 10f CF, echo=FALSE}
+# pls_model$Ymeans # intercept value
+
+# plot(pls_model,plottype = "validation")
+# test on the 2017 season, previoulsy "unseen" by the model
+
+{pred_results_TEST_10f <- predict(pls_model_10CV, ncomp = 5, newdata = testSyndrome)
+# matplot(cbind(coredata(testLDI),pred_results_TEST), type= c("b"), pch=1)
+      merge_to_plot <- merge.xts(testLDI,pred_results_TEST_10f)
+      names(merge_to_plot) <- c("actual", "predicted")
+      plot(merge_to_plot, type="b", xlab="Time", ylab="% of positive tests", main="Predicting 'unknown' season 7, 10f CV",sub="10f CV", legend.loc="topright")
+}
+
+```
+
+<!-- ```{r predicting scores} -->
+<!-- # It is often interesting to predict scores from new observations, instead of response values. This can be done by specifying the argument type = "scores" in predict. One will then get a matrix with the scores corresponding to the components specified in comps (ncomp is accepted as a synonym for comps when predicting scores). -->
+<!-- pred_results_TEST_score <- predict(pls_model, -->
+<!--                               ncomp = 4, -->
+<!--                               newdata = trainSyndrome, -->
+<!--                               type = "scores") -->
+<!-- # matplot(cbind(coredata(testLDI),pred_results_TEST), type= c("b"), pch=1) -->
+
+
+<!-- plot(merge.xts(trainLDI,pred_results_TEST_score), type="b") -->
+
+
+
+<!-- # It is often interesting to predict scores from new observations, instead of response values. This can be done by specifying the argument type = "scores" in predict. One will then get a matrix with the scores corresponding to the components specified in comps (ncomp is accepted as a synonym for comps when predicting scores). -->
+
+
+<!-- RMSEP(pls_model, newdata = testLDI) %>% plot -->
+<!-- ``` -->
+
+
+### "Leave one season out"
+In the above model, 10-fold cross-validation randomly subset the dataset into 10 datasets in order to train/validate the model. This effectively ignores the time-dependance and seasonality of the influenza activity. Often, influenza-related models build and test upon whole influenza seasons. There are seven full influenza seasons in the dataset.
+Therefore, the cross-validation parameters were set so that the models are built upon six seasons and tested upon the one being left. This approach could be called "leave one season out".
+
+
+```{r Fitting a model leave one season out, echo=FALSE}
+library("pls")
+
+{y <- trainLDI %>% coredata()
+X <- trainSyndrome %>% coredata()
+
+pls_model_LOSO <- plsr(y ~ X, 
+            # ncomp=10, 
+            validation = "CV",
+            segment.type="consecutive",
+            segments=6,
+            #,segments = cvsegments(66, length.seg = 33, type = "cons")
+            # method = "kernelpls"
+            method = "simpls"
+)}
+# summary(pls_model)
+
+```
+
+#### (R)MSEP and number of components 
+
+The below chart shows the mean squared error of prediction based upon a number of components. Three is the "best" number of components according to the one-sigma and randomisation methods.
+
+```{r Defining optimal number of components LOSO, echo=FALSE}
+ncomp.onesigma <- selectNcomp(pls_model_LOSO, method = "onesigma", plot = TRUE, main="Optimal number of components according to the one-sigma heuristic, LOSO")
+```
+
+```{r echo=FALSE}
+ncomp.permut <- selectNcomp(pls_model_LOSO, method = "randomization", alpha = 0.01, plot = TRUE, main="Optimal number of components according to randomisation method, LOSO")
+# selectNcomp(pls_model_LOSO, plot = TRUE, main="Optimal number of components")
+```
+
+
+
+Further, predictions were made based upon the training dataset itself in order to estimate how well the model fits the data.
+
+
+```{r predict known seasons LOSO, echo=FALSE}
+
+{pred_results_TRAIN_LOSO <- predict(pls_model_LOSO
+                               , ncomp = 3
+                               # , comps = 1
+                               )
+# plot(pred_results_TRAIN_LOSO)
+# lines(pred_results_TRAIN_LOSO)
+# matplot(cbind(coredata(trainLDI),pred_results_TRAIN_LOSO), type= c("b"), pch=1)}
+# colnames(pred_results_TRAIN_LOSO) <- "predicted"
+
+merge_to_plot <- merge.xts(trainLDI, pred_results_TRAIN_LOSO)
+names(merge_to_plot) <- c("actual", "predicted")
+plot(merge_to_plot, xlab="Time", ylab="% of positive tests", main="Predicting known seasons 1 to 6, LOSO", legend.loc="topright")}
+
+
+```
+
+```{r predict unknown season LOSO, echo=FALSE}
+# pls_model$Ymeans # intercept value
+
+# plot(pls_model,plottype = "validation")
+# test on the 2017 season, previoulsy "unseen" by the model
+
+{pred_results_TEST_LOSO <- predict(pls_model_LOSO, ncomp = 3, newdata = testSyndrome)
+# matplot(cbind(coredata(testLDI),pred_results_TEST), type= c("b"), pch=1)
+      merge_to_plot <- merge.xts(testLDI,pred_results_TEST_LOSO)
+      names(merge_to_plot) <- c("actual", "predicted")
+      plot(merge_to_plot, type="b", xlab="Time", ylab="% of positive tests", main="Predicting unknown season 7, LOSO", legend.loc="topright")
+}
+
+```
+Finally, the prediction for the 7th season was made (figure X).
+
+# Comparing accuracy metrics of the two models
+The performance of both models is to be estimated using a set of accuracy metrics.
+
+The following metrics were calculated for predictions in order to estimate the models' accuracy:
+
+- ME: Mean Error
+
+- RMSE: Root Mean Squared Error
+
+- MAE: Mean Absolute Error
+
+- MPE: Mean Percentage Error
+
+- MAPE: Mean Absolute Percentage Error
+
+
+## Estimating the fit to the training set
+First, we see how good each model fits the training data.
+
+```{r TRAIN LOSO VS 10f CV, echo=FALSE}
+accuracy_10f_train <- accuracy(ts(pred_results_TRAIN_10CV),trainLDI)
+# accuracy_10f_train
+accuracy_LOSO_train <- accuracy(ts(pred_results_TRAIN_LOSO),trainLDI)
+# accuracy_LOSO_train
+accuracy_results_train <- rbind(accuracy_10f_train,accuracy_LOSO_train)
+rownames(accuracy_results_train) <- c("PLSR_10f","PLSR_LOSO")
+accuracy_results_train %>% as.data.frame() %>%  select(ME,RMSE, MAE) %>% as.matrix %>% barplot (legend.text=T, col=c("green","blue"), beside=T, horiz=T, args.legend = list(x ='bottomright'), main="Accuracy metrics wrt training set")
+```
+
+As can be seen from the chart, the 10-fold CV fits the data slightly better.
+
+## Estimating accuracy for the test set
+The next chart shows the errors in predicting the test season.
+
+```{r ME,RMSE, MAE, echo=FALSE}
+
+accuracy_10f_test <- accuracy(ts(pred_results_TEST_10f),testLDI)
+accuracy_LOSO_test <- accuracy(ts(pred_results_TEST_LOSO),testLDI)
+
+
+accuracy_results_test <- rbind(accuracy_10f_test,accuracy_LOSO_test,auto_ARIMA_accuracy_results_TEST[-1,-c(6,7)])
+rownames(accuracy_results_test) <- c("PLSR_10f","PLSR_LOSO","ARIMA")
+accuracy_results_test %>% as.data.frame() %>%  select(ME,RMSE, MAE) %>% as.matrix %>% barplot ( legend.text=T, col=c("green","blue","red"), beside=T, horiz=T, args.legend = list(x ='bottomright'), main="Accuracy metrics wrt test set, part 1")
+```
+
+As can be seen, the PLSR_10f performs better if judging from the ME, RMSE, and MAE. 
+
+```{r MPE, MAPE, echo=FALSE}
+accuracy_results_test %>% as.data.frame() %>%  select( MPE,MAPE) %>% as.matrix %>% barplot (legend.text=T, col=c("green","blue","red"), beside=T, horiz=T, args.legend = list(x ='bottomright'), main="Accuracy metrics wrt test set, part 2")
+```
+
+However, according to percentage based errors (MPE,MAPE) - PLSR_LOSO performs better. Notably, negative MAPE indicates that both models tend to underestimate the LDI percentage value.
+
+
+# Discussion
+This study aims at estimating the percentage of positive laboratory-confirmed cases of influenza through the calls to Swedish medical information system (1177 Vårdguiden). We calculated the occurrence of various syndromes from the calls for seven influenza seasons. These figures were subsequently used to generate a model estimating the proportion of laboratory verified influenza cases. We applied an approach designed for highly correlated data, partial least squares regression. Furthermore, we fitted an ARIMA model to the proportion of positive laboratory-confirmed cases to use as a baseline for performance comparison. The model utilising the data on calls outperforms the conventional ARIMA model rendering calls to medical information systems valuable as an accurate and cheap source for syndromic surveillance.
+
+
+# Bibliography
